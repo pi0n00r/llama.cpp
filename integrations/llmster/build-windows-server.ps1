@@ -69,6 +69,7 @@ $configure = @(
     '-DGGML_BACKEND_DL=ON',
     '-DGGML_NATIVE=OFF',
     '-DGGML_CPU=ON',
+    '-DGGML_OPENMP=OFF',
     '-DGGML_HIP=ON',
     '-DGPU_TARGETS=gfx1151',
     '-DGGML_CUDA=OFF',
@@ -91,35 +92,27 @@ if (-not (Test-Path -LiteralPath (Join-Path $bin 'ggml-hip.dll'))) {
 Invoke-Checked ctest @('--test-dir', $build, '--output-on-failure', '--no-tests=error',
     '-R', '^(test-chat-template|test-chat-peg-parser|test-chat-auto-parser)$')
 
-# Keep the new server family self-contained. Do not include proprietary bindings.
-Get-ChildItem -LiteralPath $bin -File |
-    Where-Object { $_.Extension -eq '.dll' -or $_.Name -eq 'llama-server.exe' } |
-    Copy-Item -Destination $Output
-Get-ChildItem -LiteralPath $rocmBin -File -Filter '*.dll' |
-    Copy-Item -Destination $Output
+# Only the standalone subprocess is packaged; no LM Studio bindings are replaced.
+$redistVersions = Get-ChildItem -LiteralPath (Join-Path $vs 'VC\Redist\MSVC') -Directory |
+    Where-Object { $_.Name -match '^\d+\.\d+\.\d+$' } |
+    Sort-Object { [version]$_.Name } -Descending
+if (-not $redistVersions) { throw 'MSVC redistributable not found.' }
+$redist = Join-Path $redistVersions[0].FullName 'x64'
+Invoke-Checked python @((Join-Path $PSScriptRoot 'package-windows-server.py'),
+    '--compiled', $bin, '--sdk', $rocm, '--redist', $redist,
+    '--source', $Source, '--output', $Output, '--evidence', $Evidence)
 
-Copy-Item -LiteralPath (Join-Path $Source 'LICENSE') -Destination (Join-Path $Output 'LICENSE.llama.cpp')
-$licenseRoot = Join-Path $Output 'licenses-rocm'
-$sitePackages = Split-Path $rocm
-$licenseFiles = @(Get-ChildItem -LiteralPath $sitePackages -Recurse -File |
-    Where-Object { $_.Name -match '^(LICENSE|NOTICE|COPYING)(\.|$)' })
-if ($licenseFiles.Count -eq 0) { throw 'ROCm distribution license files not found.' }
-foreach ($file in $licenseFiles) {
-    $relative = $file.FullName.Substring($sitePackages.Length + 1)
-    $destination = Join-Path $licenseRoot $relative
-    New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
-    Copy-Item -LiteralPath $file.FullName -Destination $destination
-}
-
-$server = Join-Path $Output 'llama-server.exe'
+$server = Join-Path $Output 'bin\llama-server.exe'
+# Prove launch without the build SDK or MSVC directories in PATH.
+$env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
 & $server --version 2>&1 | Set-Content -LiteralPath (Join-Path $Evidence 'server-version.txt')
 if ($LASTEXITCODE -ne 0) { throw 'Packaged server --version failed.' }
 & $server --help 2>&1 | Set-Content -LiteralPath (Join-Path $Evidence 'server-help.txt')
 if ($LASTEXITCODE -ne 0) { throw 'Packaged server --help failed.' }
 
-$manifest = Get-ChildItem -LiteralPath $Output -File | Sort-Object Name | ForEach-Object {
+$manifest = Get-ChildItem -LiteralPath $Output -Recurse -File | Sort-Object FullName | ForEach-Object {
     [ordered]@{
-        name = $_.Name
+        name = $_.FullName.Substring($Output.Length + 1).Replace('\', '/')
         bytes = $_.Length
         sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
     }

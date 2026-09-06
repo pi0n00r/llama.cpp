@@ -11,6 +11,8 @@ on:
     paths:
       - .github/workflows/windows-rocm-candidate.yml
       - integrations/llmster/build-windows-server.ps1
+      - integrations/llmster/package-windows-server.py
+      - integrations/llmster/test_package_windows_server.py
 
 permissions:
   contents: read
@@ -46,9 +48,21 @@ jobs:
         uses: ./source/.github/actions/windows-setup-rocm
         with:
           version: 10.0.0
+      - name: Install the matching GPU kernel data and PE inspector
+        shell: pwsh
+        run: |
+          $python = 'C:\TheRock\build\.venv\Scripts\python.exe'
+          & $python -m pip install --index-url https://stable.repo.amd.com/rocm/whl-next/ rocm-sdk-device-gfx1151==10.0.0
+          if ($LASTEXITCODE -ne 0) { throw 'GPU kernel package installation failed.' }
+          & $python -m pip install pefile==2024.8.26
+          if ($LASTEXITCODE -ne 0) { throw 'PE inspector installation failed.' }
+          & 'C:\TheRock\build\.venv\Scripts\rocm-sdk.exe' init
+          if ($LASTEXITCODE -ne 0) { throw 'GPU kernel overlay initialization failed.' }
       - name: Build and inspect the candidate
         shell: pwsh
         run: |
+          & 'C:\TheRock\build\.venv\Scripts\python.exe' -B ./integrations/llmster/test_package_windows_server.py
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging regressions failed.' }
           & ./integrations/llmster/build-windows-server.ps1 -Source ./source -Output ./candidate -Evidence ./evidence -Jobs 2
       - name: Upload candidate and build evidence
         if: always()
