@@ -38,6 +38,10 @@ $env:LLVM_PATH = Join-Path $rocm 'lib\llvm'
 $env:PATH = "$rocmBin;$env:PATH"
 $compiler = Join-Path $rocm 'lib\llvm\bin\clang.exe'
 $cppCompiler = Join-Path $rocm 'lib\llvm\bin\clang++.exe'
+$sdkInventory = Get-ChildItem -LiteralPath $rocm -Recurse -File |
+    Select-Object @{n='path';e={$_.FullName.Substring($rocm.Length + 1)}}, Length
+$sdkInventory | ConvertTo-Json -Depth 3 |
+    Set-Content -LiteralPath (Join-Path $Evidence 'rocm-sdk-inventory.json')
 
 # Import MSVC's developer environment into this process, never the machine.
 $vswhere = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -60,7 +64,6 @@ $configure = @(
     "-DCMAKE_PREFIX_PATH=$rocm",
     "-DCMAKE_C_COMPILER=$compiler",
     "-DCMAKE_CXX_COMPILER=$cppCompiler",
-    "-DCMAKE_HIP_COMPILER=$compiler",
     "-DHIP_PATH=$rocm",
     '-DBUILD_SHARED_LIBS=ON',
     '-DGGML_BACKEND_DL=ON',
@@ -68,7 +71,6 @@ $configure = @(
     '-DGGML_CPU=ON',
     '-DGGML_HIP=ON',
     '-DGPU_TARGETS=gfx1151',
-    '-DAMDGPU_TARGETS=gfx1151',
     '-DGGML_CUDA=OFF',
     '-DGGML_VULKAN=OFF',
     '-DLLAMA_OPENSSL=OFF',
@@ -79,15 +81,15 @@ $configure = @(
 Invoke-Checked cmake $configure
 Copy-Item -LiteralPath (Join-Path $build 'CMakeCache.txt') -Destination $Evidence
 Invoke-Checked cmake @('--build', $build, '--parallel', "$Jobs", '--target',
-    'llama-server', 'ggml-hip', 'test-chat-template', 'test-json-schema-to-grammar',
-    'test-grammar-parser')
+    'llama-server', 'ggml-hip', 'test-chat-template', 'test-chat-peg-parser',
+    'test-chat-auto-parser')
 
 $bin = Join-Path $build 'bin'
 if (-not (Test-Path -LiteralPath (Join-Path $bin 'ggml-hip.dll'))) {
     throw 'HIP backend was not produced.'
 }
-Invoke-Checked ctest @('--test-dir', $build, '--output-on-failure',
-    '-R', '^(test-chat-template|test-json-schema-to-grammar|test-grammar-parser)$')
+Invoke-Checked ctest @('--test-dir', $build, '--output-on-failure', '--no-tests=error',
+    '-R', '^(test-chat-template|test-chat-peg-parser|test-chat-auto-parser)$')
 
 # Keep the new server family self-contained. Do not include proprietary bindings.
 Get-ChildItem -LiteralPath $bin -File |
@@ -96,10 +98,18 @@ Get-ChildItem -LiteralPath $bin -File |
 Get-ChildItem -LiteralPath $rocmBin -File -Filter '*.dll' |
     Copy-Item -Destination $Output
 
-$sdkInventory = Get-ChildItem -LiteralPath $rocm -Recurse -File |
-    Select-Object @{n='path';e={$_.FullName.Substring($rocm.Length + 1)}}, Length
-$sdkInventory | ConvertTo-Json -Depth 3 |
-    Set-Content -LiteralPath (Join-Path $Evidence 'rocm-sdk-inventory.json')
+Copy-Item -LiteralPath (Join-Path $Source 'LICENSE') -Destination (Join-Path $Output 'LICENSE.llama.cpp')
+$licenseRoot = Join-Path $Output 'licenses-rocm'
+$sitePackages = Split-Path $rocm
+$licenseFiles = @(Get-ChildItem -LiteralPath $sitePackages -Recurse -File |
+    Where-Object { $_.Name -match '^(LICENSE|NOTICE|COPYING)(\.|$)' })
+if ($licenseFiles.Count -eq 0) { throw 'ROCm distribution license files not found.' }
+foreach ($file in $licenseFiles) {
+    $relative = $file.FullName.Substring($sitePackages.Length + 1)
+    $destination = Join-Path $licenseRoot $relative
+    New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
+    Copy-Item -LiteralPath $file.FullName -Destination $destination
+}
 
 $server = Join-Path $Output 'llama-server.exe'
 & $server --version 2>&1 | Set-Content -LiteralPath (Join-Path $Evidence 'server-version.txt')
