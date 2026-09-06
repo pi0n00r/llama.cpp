@@ -1,11 +1,12 @@
 # llama.cpp
 
 > [!NOTE]
-> This is the pi0n00r maintenance fork used by our LocalAI deployment. It
-> follows upstream `master` and carries the narrow gfx1151 ROCm host-buffer
-> correction described in [issue #28211](https://github.com/ggml-org/llama.cpp/issues/28211).
-> LocalAI build automation resolves this fork's current `master` to an exact
-> commit for each reproducible artifact. See [the integration contract](integrations/localai/README.md).
+> This is the pi0n00r maintenance fork used by our LocalAI and LM Studio
+> llmster backends. It follows upstream `master` and carries narrow corrections
+> for gfx1151 ROCm host buffers and stale server-slot state. Build automation
+> resolves this fork's current `master` to an exact commit for each reproducible
+> artifact. See the [LocalAI](integrations/localai/README.md) and
+> [llmster](integrations/llmster/README.md) integration contracts.
 
 ![llama](https://raw.githubusercontent.com/ggml-org/llama.brand/refs/heads/master/cover/llama-cpp/cover-llama-cpp-dark.svg)
 
