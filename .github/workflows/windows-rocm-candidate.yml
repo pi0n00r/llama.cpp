@@ -1,0 +1,62 @@
+# AI-NOTICE:Schema-Version=0.1
+# AI-NOTICE:License=MIT
+# AI-NOTICE:Project=llama.cpp-pi0n00r
+# AI-NOTICE:Repository=https://github.com/pi0n00r/llama.cpp
+name: Windows ROCm engine candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [jd/windows-rocm-engine]
+    paths:
+      - .github/workflows/windows-rocm-candidate.yml
+      - integrations/llmster/build-windows-server.ps1
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-rocm-engine-candidate
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      PIP_NO_CACHE_DIR: '1'
+      LLAMA_SOURCE_SHA: ea5b610e4ac6991955ddb1ccd97e7f2feac22f8c
+      ROCM_VERSION: 10.0.0
+    steps:
+      - uses: actions/checkout@v6
+      - name: Resolve and pin the reviewed source
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path evidence -Force | Out-Null
+          $lock = & ./integrations/llmster/resolve-source.ps1 -LockFile ./evidence/llama-source.lock
+          if ($lock.Revision -ne $env:LLAMA_SOURCE_SHA) {
+            throw "Fork master has moved; review the new source before building."
+          }
+      - uses: actions/checkout@v6
+        with:
+          ref: ea5b610e4ac6991955ddb1ccd97e7f2feac22f8c
+          path: source
+          fetch-depth: 1
+      - name: Install the fork's Windows ROCm toolchain
+        uses: ./source/.github/actions/windows-setup-rocm
+        with:
+          version: 10.0.0
+      - name: Build and inspect the candidate
+        shell: pwsh
+        run: |
+          & ./integrations/llmster/build-windows-server.ps1 -Source ./source -Output ./candidate -Evidence ./evidence -Jobs 2
+      - name: Upload candidate and build evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-rocm-gfx1151-candidate
+          path: |
+            candidate/
+            evidence/
+          retention-days: 14
+          if-no-files-found: error
