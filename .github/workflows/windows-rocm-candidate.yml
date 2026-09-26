@@ -1,0 +1,78 @@
+# AI-NOTICE:Schema-Version=0.1
+# AI-NOTICE:License=MIT
+# AI-NOTICE:Project=llama.cpp-pi0n00r
+# AI-NOTICE:Repository=https://github.com/pi0n00r/llama.cpp
+name: Windows ROCm QPC fix candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [build/qpc-windows-rocm-candidate]
+    paths:
+      - .github/workflows/windows-rocm-candidate.yml
+      - ggml/src/ggml.c
+      - ggml/src/ggml-time.h
+      - integrations/llmster/build-windows-server.ps1
+      - integrations/llmster/package-windows-server.py
+      - integrations/llmster/test_package_windows_server.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-rocm-qpc-candidate
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      PIP_NO_CACHE_DIR: '1'
+      LLAMA_SOURCE_SHA: ef181b34d5de048d4bcfabc9e4c2a4a09f7d99f3
+      ROCM_VERSION: 10.0.0
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
+        with:
+          ref: ef181b34d5de048d4bcfabc9e4c2a4a09f7d99f3
+          path: source
+          fetch-depth: 1
+      - name: Verify pinned source
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path evidence -Force | Out-Null
+          $revision = (& git -C source rev-parse HEAD).Trim()
+          if ($revision -ne $env:LLAMA_SOURCE_SHA) { throw "Source checkout differs from reviewed SHA." }
+          "source=$revision" | Set-Content -LiteralPath evidence/llama-source.lock
+      - name: Install the fork's Windows ROCm toolchain
+        uses: ./source/.github/actions/windows-setup-rocm
+        with:
+          version: 10.0.0
+      - name: Install the matching GPU kernel data and PE inspector
+        shell: pwsh
+        run: |
+          $python = 'C:\TheRock\build\.venv\Scripts\python.exe'
+          & $python -m pip install --index-url https://stable.repo.amd.com/rocm/whl-next/ rocm-sdk-device-gfx1151==10.0.0
+          if ($LASTEXITCODE -ne 0) { throw 'GPU kernel package installation failed.' }
+          & $python -m pip install pefile==2024.8.26
+          if ($LASTEXITCODE -ne 0) { throw 'PE inspector installation failed.' }
+          & 'C:\TheRock\build\.venv\Scripts\rocm-sdk.exe' init
+          if ($LASTEXITCODE -ne 0) { throw 'GPU kernel overlay initialization failed.' }
+      - name: Build and inspect the candidate
+        shell: pwsh
+        run: |
+          & 'C:\TheRock\build\.venv\Scripts\python.exe' -B ./integrations/llmster/test_package_windows_server.py
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging regressions failed.' }
+          & ./integrations/llmster/build-windows-server.ps1 -Source ./source -Output ./candidate -Evidence ./evidence -Jobs 2
+      - name: Upload candidate and build evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-rocm-gfx1151-candidate
+          path: |
+            candidate/
+            evidence/
+          retention-days: 14
+          if-no-files-found: error
+          include-hidden-files: true
