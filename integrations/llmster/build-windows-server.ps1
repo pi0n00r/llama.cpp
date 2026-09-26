@@ -83,14 +83,14 @@ Invoke-Checked cmake $configure
 Copy-Item -LiteralPath (Join-Path $build 'CMakeCache.txt') -Destination $Evidence
 Invoke-Checked cmake @('--build', $build, '--parallel', "$Jobs", '--target',
     'llama-server', 'ggml-hip', 'test-chat-template', 'test-chat-peg-parser',
-    'test-chat-auto-parser')
+    'test-chat-auto-parser', 'test-ggml-time')
 
 $bin = Join-Path $build 'bin'
 if (-not (Test-Path -LiteralPath (Join-Path $bin 'ggml-hip.dll'))) {
     throw 'HIP backend was not produced.'
 }
 Invoke-Checked ctest @('--test-dir', $build, '--output-on-failure', '--no-tests=error',
-    '-R', '^(test-chat-template|test-chat-peg-parser|test-chat-auto-parser)$')
+    '-R', '^(test-chat-template|test-chat-peg-parser|test-chat-auto-parser|test-ggml-time)$')
 
 # Only the standalone subprocess is packaged; no LM Studio bindings are replaced.
 $redistVersions = Get-ChildItem -LiteralPath (Join-Path $vs 'VC\Redist\MSVC') -Directory |
