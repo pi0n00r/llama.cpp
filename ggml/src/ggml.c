@@ -525,6 +525,8 @@ const char * ggml_commit(void) {
 //
 
 #if defined(_MSC_VER) || defined(__MINGW32__)
+#include "ggml-time.h"
+
 static int64_t timer_freq, timer_start;
 static BOOL CALLBACK ggml_time_init_once(PINIT_ONCE once, PVOID param, PVOID *ctx) {
     UNUSED(once);
@@ -535,9 +537,7 @@ static BOOL CALLBACK ggml_time_init_once(PINIT_ONCE once, PVOID param, PVOID *ct
     QueryPerformanceFrequency(&t);
     timer_freq = t.QuadPart;
 
-    // The multiplication by 1000 or 1000000 below can cause an overflow if timer_freq
-    // and the uptime is high enough.
-    // We subtract the program start time to reduce the likelihood of that happening.
+    // Use elapsed ticks to keep the conversion within range for long-running servers.
     QueryPerformanceCounter(&t);
     timer_start = t.QuadPart;
 
@@ -550,12 +550,12 @@ void ggml_time_init(void) {
 int64_t ggml_time_ms(void) {
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
-    return ((t.QuadPart-timer_start) * 1000) / timer_freq;
+    return ggml_time_ticks_to_units(t.QuadPart - timer_start, timer_freq, 1000);
 }
 int64_t ggml_time_us(void) {
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
-    return ((t.QuadPart-timer_start) * 1000000) / timer_freq;
+    return ggml_time_ticks_to_units(t.QuadPart - timer_start, timer_freq, 1000000);
 }
 #else
 void ggml_time_init(void) {}
