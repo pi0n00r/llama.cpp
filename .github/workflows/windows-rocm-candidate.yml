@@ -2,7 +2,7 @@
 # AI-NOTICE:License=MIT
 # AI-NOTICE:Project=llama.cpp-pi0n00r
 # AI-NOTICE:Repository=https://github.com/pi0n00r/llama.cpp
-name: Windows ROCm QPC fix candidate
+name: Windows ROCm upstream catch-up candidate
 
 on:
   workflow_dispatch:
@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: windows-rocm-qpc-candidate
+  group: windows-rocm-upstream-catchup-candidate
   cancel-in-progress: false
 
 jobs:
@@ -29,13 +29,13 @@ jobs:
     timeout-minutes: 90
     env:
       PIP_NO_CACHE_DIR: '1'
-      LLAMA_SOURCE_SHA: ef181b34d5de048d4bcfabc9e4c2a4a09f7d99f3
+      LLAMA_SOURCE_SHA: ${{ github.sha }}
       ROCM_VERSION: 10.0.0
     steps:
       - uses: actions/checkout@v6
       - uses: actions/checkout@v6
         with:
-          ref: ef181b34d5de048d4bcfabc9e4c2a4a09f7d99f3
+          ref: ${{ github.sha }}
           path: source
           fetch-depth: 1
       - name: Verify pinned source

@@ -37,6 +37,33 @@ The build must not fall back to upstream when either resolution or checkout
 fails. Include the generated `llama-source.lock` in the build evidence or
 artifact manifest.
 
+## hAIlo Windows ROCm candidate and engine assembly
+
+The Windows ROCm workflow builds an exact-commit llama-server plus its
+dependency closure and GPU data. That artifact alone is **not** an LM Studio
+runtime update. The workflow resolves its source from the dispatched Git SHA,
+records the full SHA in evidence/build-manifest.json, and never selects a
+runtime on hAIlo.
+
+On hAIlo, use assemble-windows-engine.ps1 with the verified candidate/ and
+evidence/ artifact directories and the currently installed, selected Windows
+ROCm engine as BaseEngine. Supply a distinct NewName and new staging paths for
+Output and Evidence. The assembler verifies every candidate hash against build
+evidence, retains the installed LM Studio Node bindings byte-for-byte, replaces
+only the copied engine's fork-engine, and regenerates the server-artifact
+inventory. It never edits or selects the base.
+test-assemble-windows-engine.ps1 exercises successful assembly and an early
+hash-mismatch hold on Windows.
+
+Do not upload the installed LM Studio engine or its bindings to GitHub Actions.
+Do not install the standalone artifact as though it were a complete backend.
+Install the assembled directory side-by-side only after exact manifest and
+hash readback. First prove LM Studio lists it, then select it during a guarded
+load window and test actual model load, generation, tool calls, structured
+output, slot reuse, and 131072-context behavior. Preserve the prior selected
+engine for immediate rollback. A passed standalone server test is not proof
+that LM Studio's retained bindings accept the new server protocol.
+
 ## Required checks
 
 Before replacing a Windows llmster runtime:
