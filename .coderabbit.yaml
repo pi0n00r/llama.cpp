@@ -7,3 +7,4 @@ reviews:
     drafts: true
     auto_incremental_review: true
     auto_pause_after_reviewed_commits: 1
+# Disposable smoke check for draft-PR review receipt.
