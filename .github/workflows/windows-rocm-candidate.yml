@@ -11,7 +11,6 @@ on:
     paths:
       - .github/workflows/windows-rocm-candidate.yml
       - ggml/src/ggml.c
-      - ggml/src/ggml-time.h
       - integrations/llmster/build-windows-server.ps1
       - integrations/llmster/package-windows-server.py
       - integrations/llmster/test_package_windows_server.py
