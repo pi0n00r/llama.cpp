@@ -1,0 +1,121 @@
+name: LocalAI v4.12.1 with maintained llama.cpp
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  attestations: write
+  id-token: write
+
+concurrency:
+  group: localai-v4.12.1-llama-latest
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      LOCALAI_COMMIT: ec9274027eadd552d56f2c6c1fe86cd9216a991a
+      LLAMA_COMMIT: 72500667f88c6b7ed2e6ebbc308d8759a0a5afea
+      BACKEND_REPOSITORY: ghcr.io/pi0n00r/localai-llama-backend
+      RUNTIME_REPOSITORY: ghcr.io/pi0n00r/localai
+      LOCALAI_RUNTIME: docker.io/localai/localai@sha256:ac48a6f50d9a7557df457c4abd886c0fd2eec74cc53265ecfce226393b6445f4
+      ROCM_BASE: docker.io/rocm/dev-ubuntu-24.04@sha256:fe29799baf7b8db986a707110c15579dc0fb6e39d48973fbb82dfc33a0c7e179
+      GRPC_BUILDER: quay.io/go-skynet/ci-cache@sha256:f56be8225e04d41a5783ebb7a33e6c43ab75123680559909bdae2000d5d6e7b2
+    steps:
+      - name: Check out build recipe
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Prepare exact LocalAI source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init "$RUNNER_TEMP/LocalAI"
+          git -C "$RUNNER_TEMP/LocalAI" remote add origin https://github.com/mudler/LocalAI.git
+          git -C "$RUNNER_TEMP/LocalAI" fetch --depth 1 origin "$LOCALAI_COMMIT"
+          git -C "$RUNNER_TEMP/LocalAI" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/LocalAI" rev-parse HEAD)" = "$LOCALAI_COMMIT"
+          git -C "$RUNNER_TEMP/LocalAI" apply \
+            "$GITHUB_WORKSPACE/integrations/localai/v4.12.1-llama-latest/localai-v4.12.1-llama.patch"
+          grep -F "LLAMA_VERSION?=$LLAMA_COMMIT" \
+            "$RUNNER_TEMP/LocalAI/backend/cpp/llama-cpp/Makefile"
+          grep -F 'LLAMA_REPO?=https://github.com/pi0n00r/llama.cpp.git' \
+            "$RUNNER_TEMP/LocalAI/backend/cpp/llama-cpp/Makefile"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
+
+      - name: Log in to GHCR
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish pinned llama.cpp backend
+        id: backend
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        with:
+          context: ${{ runner.temp }}/LocalAI
+          file: ${{ runner.temp }}/LocalAI/backend/Dockerfile.llama-cpp
+          platforms: linux/amd64
+          push: true
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            BUILD_TYPE=hipblas
+            AMDGPU_TARGETS=gfx1151
+            BASE_IMAGE=${{ env.ROCM_BASE }}
+            BUILDER_BASE_IMAGE=${{ env.GRPC_BUILDER }}
+            BUILDER_TARGET=builder-prebuilt
+          tags: |
+            ${{ env.BACKEND_REPOSITORY }}:v4.12.1-llama-72500667f
+            ${{ env.BACKEND_REPOSITORY }}:v4.12.1-llama-latest
+
+      - name: Build and publish reproducible LocalAI runtime
+        id: runtime
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83
+        with:
+          context: integrations/localai/v4.12.1-llama-latest
+          file: integrations/localai/v4.12.1-llama-latest/Dockerfile.runtime
+          platforms: linux/amd64
+          push: true
+          provenance: mode=max
+          sbom: true
+          build-args: |
+            BACKEND_IMAGE=${{ env.BACKEND_REPOSITORY }}@${{ steps.backend.outputs.digest }}
+            LOCALAI_IMAGE=${{ env.LOCALAI_RUNTIME }}
+            LOCALAI_COMMIT=${{ env.LOCALAI_COMMIT }}
+            LLAMA_COMMIT=${{ env.LLAMA_COMMIT }}
+          tags: |
+            ${{ env.RUNTIME_REPOSITORY }}:v4.12.1-llama-72500667f
+            ${{ env.RUNTIME_REPOSITORY }}:v4.12.1-llama-latest
+
+      - name: Verify published runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="${RUNTIME_REPOSITORY}@${{ steps.runtime.outputs.digest }}"
+          docker pull "$image"
+          test "$(docker inspect --format '{{ index .Config.Labels "com.bajaj.localai.commit" }}' "$image")" = "$LOCALAI_COMMIT"
+          test "$(docker inspect --format '{{ index .Config.Labels "com.bajaj.llama-cpp.commit" }}' "$image")" = "$LLAMA_COMMIT"
+          docker run --rm --entrypoint /bin/sh "$image" -ec \
+            'test -x /var/lib/local-ai/backends/llama-cpp/run.sh; test -x /local-ai'
+          docker run --rm --entrypoint /local-ai "$image" --version
+          mkdir -p evidence
+          cp integrations/localai/v4.12.1-llama-latest/SOURCE.lock evidence/SOURCE.lock
+          printf '%s  %s\n' '${{ steps.backend.outputs.digest }}' localai-llama-backend > evidence/IMAGE-DIGESTS
+          printf '%s  %s\n' '${{ steps.runtime.outputs.digest }}' localai-runtime >> evidence/IMAGE-DIGESTS
+          docker buildx imagetools inspect --raw "$image" > evidence/runtime-manifest.json
+          sha256sum evidence/* > evidence/SHA256SUMS
+
+      - name: Retain build evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: localai-v4.12.1-llama-72500667f-evidence
+          path: evidence
+          if-no-files-found: error
+          retention-days: 90

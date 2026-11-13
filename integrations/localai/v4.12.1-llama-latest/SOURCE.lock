@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "localai": {
+    "version": "v4.12.1",
+    "repository": "https://github.com/mudler/LocalAI.git",
+    "commit": "ec9274027eadd552d56f2c6c1fe86cd9216a991a",
+    "runtime_image": "docker.io/localai/localai@sha256:ac48a6f50d9a7557df457c4abd886c0fd2eec74cc53265ecfce226393b6445f4"
+  },
+  "llama_cpp": {
+    "requested_ref": "master",
+    "repository": "https://github.com/pi0n00r/llama.cpp.git",
+    "commit": "72500667f88c6b7ed2e6ebbc308d8759a0a5afea"
+  },
+  "target": {
+    "platform": "linux/amd64",
+    "build_type": "hipblas",
+    "amdgpu_targets": ["gfx1151"],
+    "rocm_base": "docker.io/rocm/dev-ubuntu-24.04@sha256:fe29799baf7b8db986a707110c15579dc0fb6e39d48973fbb82dfc33a0c7e179",
+    "grpc_builder": "quay.io/go-skynet/ci-cache@sha256:f56be8225e04d41a5783ebb7a33e6c43ab75123680559909bdae2000d5d6e7b2"
+  }
+}
