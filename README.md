@@ -8,7 +8,7 @@
 > artifact. See the [LocalAI](integrations/localai/README.md) and
 > [llmster](integrations/llmster/README.md) integration contracts.
 
-![llama](https://raw.githubusercontent.com/ggml-org/llama.brand/refs/heads/master/cover/llama-cpp/cover-llama-cpp-dark.svg)
+![llama.cpp](https://raw.githubusercontent.com/ggml-org/llama-brand/refs/heads/master/logo/svg/cover/llama-cpp/cover-llama-cpp-dark.svg)
 
 <div align="center">
 
