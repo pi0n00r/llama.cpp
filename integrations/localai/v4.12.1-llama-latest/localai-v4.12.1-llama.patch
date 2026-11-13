@@ -1,0 +1,11 @@
+diff --git a/backend/cpp/llama-cpp/Makefile b/backend/cpp/llama-cpp/Makefile
+--- a/backend/cpp/llama-cpp/Makefile
++++ b/backend/cpp/llama-cpp/Makefile
+@@ -1,5 +1,5 @@
+ 
+-LLAMA_VERSION?=c0fd78626405c6d9b934efef0ec7291fcc20e3d6
+-LLAMA_REPO?=https://github.com/ggerganov/llama.cpp
++LLAMA_VERSION?=72500667f88c6b7ed2e6ebbc308d8759a0a5afea
++LLAMA_REPO?=https://github.com/pi0n00r/llama.cpp.git
+ 
+ CMAKE_ARGS?=
