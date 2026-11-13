@@ -2,6 +2,12 @@ name: LocalAI v4.12.1 with maintained llama.cpp
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - .github/workflows/localai-v4.12.1-llama-latest.yml
+      - integrations/localai/v4.12.1-llama-latest/**
 
 permissions:
   contents: read
